@@ -10,10 +10,15 @@ import (
 	"strconv"
 
 	. "github.com/mickael-kerjean/filestash/server/common"
+	"github.com/mickael-kerjean/filestash/server/plugin/plg_video_transcoder/preset"
 )
 
-func transcodeVideoSegment(ctx context.Context, cachePath string, segmentNumber int, w io.Writer) error {
+func transcodeVideoSegment(ctx context.Context, cachePath string, segmentNumber int, w io.Writer, quality preset.Preset) error {
 	start := segmentNumber * HLS_VIDEO_SEGMENT_LENGTH
+	height := quality.Height
+	bitrate := fmt.Sprintf("%d", quality.Bitrate)
+	maxrate := bitrate
+	bufsize := fmt.Sprintf("%d", quality.Bitrate*2)
 	args := []string{
 		"-hide_banner", "-loglevel", "error",
 		"-timelimit", "30",
@@ -33,8 +38,9 @@ func transcodeVideoSegment(ctx context.Context, cachePath string, segmentNumber 
 			"-filter_hw_device", "va",
 		}, args...)
 		args = append(args,
-			"-vf", fmt.Sprintf("format=nv12,hwupload,scale_vaapi=w=-2:h=%d", VIDEO_MAX_HEIGHT),
+			"-vf", fmt.Sprintf("format=nv12,hwupload,scale_vaapi=w=-2:h=%d", height),
 			"-c:v", "h264_vaapi",
+			"-b:v", bitrate, "-maxrate", maxrate, "-bufsize", bufsize,
 		)
 	case "h264_nvenc":
 		args = append([]string{
@@ -42,21 +48,23 @@ func transcodeVideoSegment(ctx context.Context, cachePath string, segmentNumber 
 			"-filter_hw_device", "hw",
 		}, args...)
 		args = append(args,
-			"-vf", fmt.Sprintf("format=nv12,hwupload_cuda,scale_cuda=w=-2:h=%d", VIDEO_MAX_HEIGHT),
+			"-vf", fmt.Sprintf("format=nv12,hwupload_cuda,scale_cuda=w=-2:h=%d", height),
 			"-c:v", "h264_nvenc",
+			"-b:v", bitrate, "-maxrate", maxrate, "-bufsize", bufsize,
 		)
 	case "h264_v4l2m2m":
 		args = append(args,
-			"-vf", fmt.Sprintf("scale=-2:%d,format=yuv420p", VIDEO_MAX_HEIGHT),
+			"-vf", fmt.Sprintf("scale=-2:%d,format=yuv420p", height),
 			"-c:v", "h264_v4l2m2m",
-			"-b:v", "2500k",
+			"-b:v", bitrate,
 			"-num_output_buffers", "32",
 			"-num_capture_buffers", "32",
 		)
 	case "libx264":
 		args = append(args,
-			"-vf", fmt.Sprintf("scale=-2:%d,format=yuv420p", VIDEO_MAX_HEIGHT),
+			"-vf", fmt.Sprintf("scale=-2:%d,format=yuv420p", height),
 			"-c:v", "libx264", "-preset", "veryfast",
+			"-b:v", bitrate, "-maxrate", maxrate, "-bufsize", bufsize,
 			"-x264opts", "subme=0:me_range=4:rc_lookahead=10:me=dia:no_chroma_me:8x8dct=0:partitions=none",
 		)
 	default:

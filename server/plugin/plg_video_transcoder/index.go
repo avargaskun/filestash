@@ -2,6 +2,7 @@ package plg_video_transcoder
 
 import (
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 
 	. "github.com/mickael-kerjean/filestash/server/common"
 	"github.com/mickael-kerjean/filestash/server/plugin/plg_video_transcoder/mediaref"
+	"github.com/mickael-kerjean/filestash/server/plugin/plg_video_transcoder/preset"
 
 	"github.com/gorilla/mux"
 )
@@ -63,6 +65,14 @@ func createPlaylist(reader io.ReadCloser, ctx *App, res *http.ResponseWriter, re
 		return reader, false, nil
 	}
 
+	// resolve the quality preset against the server-side whitelist before any
+	// transcode is set up; a bogus value is a 400 that never reaches ffmpeg.
+	quality, ok := preset.FromRequest(query.Get("preset"), default_preset())
+	if ok == false {
+		reader.Close()
+		return nil, false, NewError("invalid preset", http.StatusBadRequest)
+	}
+
 	cacheName := "vid_" + GenerateID(ctx.Session) + "_" + QuickHash(path, 10) + ".dat"
 	if sourcePath, ok := localSourcePath(ctx, path); ok {
 		// the file is already on a disk the transcoder can seek into: copying it
@@ -70,7 +80,7 @@ func createPlaylist(reader io.ReadCloser, ctx *App, res *http.ResponseWriter, re
 		if err := mediaref.Register(cacheName, sourcePath, CLEAR_CACHE_AFTER*time.Hour); err == nil {
 			reader.Close()
 			(*res).Header().Set("Content-Type", "application/x-mpegURL")
-			return NewReadCloserFromBytes([]byte(servePlaylist(cacheName))), true, nil
+			return NewReadCloserFromBytes([]byte(servePlaylist(cacheName, quality))), true, nil
 		}
 	}
 
@@ -96,7 +106,13 @@ func createPlaylist(reader io.ReadCloser, ctx *App, res *http.ResponseWriter, re
 	reader.Close()
 
 	(*res).Header().Set("Content-Type", "application/x-mpegURL")
-	return NewReadCloserFromBytes([]byte(servePlaylist(cacheName))), true, nil
+	return NewReadCloserFromBytes([]byte(servePlaylist(cacheName, quality))), true, nil
+}
+
+// defaultPresetName is the configured default, coerced to a whitelisted name.
+func defaultPresetName() string {
+	p, _ := preset.FromRequest("", default_preset())
+	return p.Name
 }
 
 // localSourcePath is the on-disk location of the file this request is for, when
@@ -120,9 +136,14 @@ func localSourcePath(ctx *App, path string) (string, bool) {
 
 func createVideoMap(res http.ResponseWriter, req *http.Request) {
 	res.Header().Set("Content-Type", GetMimeType(req.URL.String()))
+	presetsJSON, _ := json.Marshal(preset.Names())
+	quality, _ := preset.FromRequest("", default_preset())
 	out, err := TmplExec(indexJS, map[string]string{
-		"enabled":   fmt.Sprintf("%v", plugin_enable()),
-		"blacklist": blacklist_format(),
+		"enabled":               fmt.Sprintf("%v", plugin_enable()),
+		"blacklist":             blacklist_format(),
+		"presets":               string(presetsJSON),
+		"defaultPreset":         quality.Name,
+		"forceTranscodeDefault": fmt.Sprintf("%v", force_transcode_default()),
 	})
 	if err != nil {
 		return

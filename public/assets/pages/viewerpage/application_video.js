@@ -13,7 +13,7 @@ import createSources from "./application_video/sources.js";
 import { transition } from "./common.js";
 import { formatTimecode } from "./common_player.js";
 import { ICON } from "./common_icon.js";
-import { renderMenubar, buttonDownload, buttonFullscreen, buttonChromecast } from "./component_menubar.js";
+import { renderMenubar, buttonDownload, buttonFullscreen, buttonChromecast, buttonQuality } from "./component_menubar.js";
 import ctrlDownloader, { init as initDownloader } from "./application_downloader.js";
 
 import "../../components/icon.js";
@@ -83,9 +83,72 @@ export default function(render, { getFilename, getDownloadUrl, acl$, mime }) {
     };
     const $hint = qs($page, ".hint");
     const $progress = qs($page, ".progress");
+
+    // quality selection: presets force a server-side transcode regardless of
+    // what the browser could play natively; "original" direct-streams the file.
+    const sourceSpec = createSources(mime, getDownloadUrl());
+    const qualities = sourceSpec.transcodable
+        ? [...sourceSpec.presets, "original"]
+        : ["original"];
+    const pickQuality = () => {
+        if (!sourceSpec.transcodable) return "original";
+        const persisted = settings_get("video_quality");
+        if (persisted === "original") return "original";
+        if (persisted && sourceSpec.presets.includes(persisted)) return persisted;
+        if ($video.canPlayType(mime) && !sourceSpec.forceTranscodeDefault) return "original";
+        return sourceSpec.defaultPreset;
+    };
+    const initialQuality = pickQuality();
+    const quality$ = new rxjs.Subject();
+
+    let hls = null;
+    const teardown = () => {
+        if (hls) { hls.destroy(); hls = null; }
+        while ($video.firstChild) $video.removeChild($video.firstChild);
+    };
+    // attach the sources for the requested quality and resolve on loadeddata,
+    // mirroring the original native/MSE/downloader fallback ladder.
+    const attach = (quality) => {
+        teardown();
+        const list = quality === "original"
+            ? sourceSpec.original
+            : [["application/x-mpegURL", sourceSpec.hls(quality)]];
+        const $sources = [];
+        for (const [type, src] of list) {
+            const $source = document.createElement("source");
+            $source.setAttribute("type", type);
+            $source.setAttribute("src", src);
+            if ($video.canPlayType(type)) $sources.push($source);
+        }
+        if ($sources.length > 0) {
+            $video.append(...$sources);
+            $video.load();
+            return rxjs.merge(
+                rxjs.fromEvent($video, "loadeddata"),
+                ...$sources.map(($source) => rxjs.fromEvent($source, "error").pipe(rxjs.mergeMap(() =>
+                    rxjs.throwError(() => new ApplicationError("Not Supported", JSON.stringify({ type: $source.type, src: $source.src }, null, 2))),
+                ))),
+            );
+        }
+        if (Hls.isSupported()) {
+            for (const [type, src] of list) {
+                if (type !== "application/x-mpegURL") continue;
+                hls = new Hls();
+                hls.loadSource(src);
+                hls.attachMedia($video);
+                return rxjs.fromEvent($video, "loadeddata");
+            }
+        }
+        return rxjs.from(initDownloader()).pipe(rxjs.mergeMap(() => {
+            ctrlDownloader(render, { acl$, getFilename, getDownloadUrl });
+            return rxjs.EMPTY;
+        }));
+    };
+
     renderMenubar(
         qs($page, "component-menubar"),
         buttonDownload(getDownloadUrl()),
+        buttonQuality(qualities, initialQuality, (q) => quality$.next(q)),
         buttonFullscreen($video),
         buttonChromecast($video),
     );
@@ -143,43 +206,7 @@ export default function(render, { getFilename, getDownloadUrl, acl$, mime }) {
     };
 
     // feature1: setup the dom
-    effect(rxjs.of(createSources(mime, getDownloadUrl())).pipe(
-        rxjs.mergeMap((sources) => {
-            const $sources = [];
-            for (const [type, src] of sources) {
-                const $source = document.createElement("source");
-                $source.setAttribute("type", type);
-                $source.setAttribute("src", src);
-                if ($video.canPlayType(type)) $sources.push($source);
-            }
-
-            // Native Playback -> best case
-            if ($sources.length > 0) {
-                $video.append(...$sources);
-                return rxjs.merge(
-                    rxjs.fromEvent($video, "loadeddata"),
-                    ...$sources.map(($source) => rxjs.fromEvent($source, "error").pipe(rxjs.mergeMap(() =>
-                        rxjs.throwError(() => new ApplicationError("Not Supported", JSON.stringify({ type: $source.type, src: $source.src }, null, 2))),
-                    ))),
-                );
-            }
-
-            // MSE Playback -> fallback as it break $video.remote functionalities
-            if (Hls.isSupported()) {
-                const hls = new Hls();
-                for (const [type, src] of sources) {
-                    if (type !== "application/x-mpegURL") continue;
-                    hls.loadSource(src);
-                    hls.attachMedia($video);
-                    return rxjs.fromEvent($video, "loadeddata");
-                }
-            }
-
-            return rxjs.from(initDownloader()).pipe(rxjs.mergeMap(() => {
-                ctrlDownloader(render, { acl$, getFilename, getDownloadUrl });
-                return rxjs.EMPTY;
-            }));
-        }),
+    effect(attach(initialQuality).pipe(
         rxjs.mergeMap(() => {
             $loader.replaceChildren(createElement(`<img src="${ICON.PLAY}" />`));
             animate($loader, {
@@ -201,6 +228,24 @@ export default function(render, { getFilename, getDownloadUrl, acl$, mime }) {
         }),
         rxjs.catchError(ctrlError()),
         rxjs.tap(() => init$.next()),
+    ));
+
+    // feature1b: quality switching - reload the source, keep position + play state
+    effect(quality$.pipe(
+        rxjs.skipUntil(init$),
+        rxjs.tap((q) => settings_put("video_quality", q)),
+        rxjs.mergeMap((q) => {
+            const resumeTime = $video.currentTime;
+            const wasPlaying = !$video.paused;
+            setStatus(STATUS_BUFFERING);
+            return attach(q).pipe(
+                rxjs.tap(() => {
+                    if (!isNaN(resumeTime) && resumeTime > 0) $video.currentTime = resumeTime;
+                    setStatus(wasPlaying ? STATUS_PLAYING : STATUS_PAUSED);
+                }),
+                rxjs.catchError(ctrlError()),
+            );
+        }),
     ));
 
     // feature2: player control - volume

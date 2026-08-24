@@ -5,13 +5,13 @@ import (
 )
 
 const (
-	VIDEO_MAX_HEIGHT = 720
-	AUDIO_BITRATE    = 128000
+	AUDIO_BITRATE = 128000
 )
 
 var (
 	HLS_SEGMENT_LENGTH        = 5
 	ENCODER            string = ""
+	DEFAULT_PRESET     string = ""
 )
 
 func init() {

@@ -20,7 +20,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: go test (transcoder)
-        run: go test -race -v ./server/plugin/plg_video_transcoder/mediaref/...
+        run: go test -race -v ./server/plugin/plg_video_transcoder/mediaref/... ./server/plugin/plg_video_transcoder/preset/...
 
   build-image:
     runs-on: ubuntu-latest

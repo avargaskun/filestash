@@ -7,6 +7,7 @@ import (
 
 	. "github.com/mickael-kerjean/filestash/server/common"
 	"github.com/mickael-kerjean/filestash/server/plugin/plg_video_transcoder/ffmpeg"
+	"github.com/mickael-kerjean/filestash/server/plugin/plg_video_transcoder/preset"
 
 	"github.com/gorilla/mux"
 )
@@ -21,10 +22,10 @@ func isActive() bool {
 	return true
 }
 
-func servePlaylist(cacheName string) string {
-	return ffmpeg.MasterPlaylist(cacheName)
+func servePlaylist(cacheName string, p preset.Preset) string {
+	return ffmpeg.MasterPlaylist(cacheName, p)
 }
 
 func serveHLSChunks(r *mux.Router) {
-	ffmpeg.RegisterRoutes(r, video_encoder())
+	ffmpeg.RegisterRoutes(r, video_encoder(), defaultPresetName())
 }

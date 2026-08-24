@@ -6,16 +6,17 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/mickael-kerjean/filestash/server/plugin/plg_video_transcoder/libav"
+	"github.com/mickael-kerjean/filestash/server/plugin/plg_video_transcoder/preset"
 )
 
 func isActive() bool {
 	return true
 }
 
-func servePlaylist(cacheName string) string {
-	return libav.MasterPlaylist(cacheName)
+func servePlaylist(cacheName string, p preset.Preset) string {
+	return libav.MasterPlaylist(cacheName, p)
 }
 
 func serveHLSChunks(r *mux.Router) {
-	libav.RegisterRoutes(r, video_encoder())
+	libav.RegisterRoutes(r, video_encoder(), defaultPresetName())
 }
