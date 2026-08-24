@@ -29,6 +29,8 @@ is chained inside `.github/workflows/release-please.yml` on purpose: a tag creat
 | `docker/Dockerfile` | Build from the fork checkout (upstream cloned `mickael-kerjean/filestash` at build time, so a fork could never build its own code) | 1.0.0 |
 | `docker/Dockerfile` | Ship the Intel VAAPI runtime — enable Debian's non-free component and install `intel-media-va-driver-non-free` + `vainfo` on amd64, so the transcoder's `h264_vaapi` encoder actually works | 1.0.0 |
 | `.github/workflows/` | release-please + GHCR publishing + a PR build/smoke CI job | 1.0.0 |
+| `plg_video_transcoder`, `plg_backend_local` | Stream local files without copying them into the video cache first. Upstream `io.Copy`s the whole source file before it will serve the master playlist, so a 40 GB remux costs a full disk-to-disk copy before the first HLS segment can even be requested. Backends may now expose `LocalPath()`; when the session's backend does, the transcoder points the segment encoders at the real file. Other backends keep the copy path | 1.1.0 |
+| `plg_video_transcoder/mediaref` | Resolve the HLS `?path=` parameter through a server-side key→path registry instead of joining it onto the cache directory. The HLS playlist and segment routes have no session middleware, so upstream's `filepath.Join(cacheDir, userInput)` was an unauthenticated arbitrary-file read (`?path=../../../../etc/...`). Regression tests: `server/plugin/plg_video_transcoder/mediaref/mediaref_test.go`, run in CI | 1.1.0 |
 
 ## Upstream-sync policy
 

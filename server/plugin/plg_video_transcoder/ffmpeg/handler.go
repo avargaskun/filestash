@@ -9,6 +9,7 @@ import (
 
 	. "github.com/mickael-kerjean/filestash/server/common"
 	. "github.com/mickael-kerjean/filestash/server/middleware"
+	"github.com/mickael-kerjean/filestash/server/plugin/plg_video_transcoder/mediaref"
 
 	"github.com/gorilla/mux"
 )
@@ -22,8 +23,7 @@ func MasterPlaylist(cacheName string) string {
 	return master
 }
 
-func RegisterRoutes(r *mux.Router, dir string, enc string) {
-	VIDEO_CACHE_PATH = dir
+func RegisterRoutes(r *mux.Router, enc string) {
 	ENCODER = enc
 	r.PathPrefix(WithBase("/hls/audio.m3u8")).Handler(NewMiddlewareChain(
 		playlistAudioHandler,
@@ -43,14 +43,28 @@ func RegisterRoutes(r *mux.Router, dir string, enc string) {
 	)).Methods("GET")
 }
 
+// mediaPath resolves the request's opaque key. These routes run without the
+// session middleware, so the key is looked up in the registry, never joined
+// onto a directory.
+func mediaPath(req *http.Request) (string, string, bool) {
+	key := req.URL.Query().Get("path")
+	path, ok := mediaref.Resolve(key)
+	if ok == false {
+		return "", "", false
+	}
+	if _, err := os.Stat(path); err != nil {
+		return "", "", false
+	}
+	return key, path, true
+}
+
 func playlistVideoHandler(ctx *App, res http.ResponseWriter, req *http.Request) {
-	cacheName := req.URL.Query().Get("path")
-	cachePath := GetAbsolutePath(VIDEO_CACHE_PATH, cacheName)
-	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
+	key, path, ok := mediaPath(req)
+	if ok == false {
 		res.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	duration, err := probeDuration(cachePath)
+	duration, err := probeDuration(path)
 	if err != nil {
 		res.WriteHeader(http.StatusInternalServerError)
 		return
@@ -68,7 +82,7 @@ func playlistVideoHandler(ctx *App, res http.ResponseWriter, req *http.Request) 
 			float64(HLS_VIDEO_SEGMENT_LENGTH),
 			duration-float64(i*HLS_VIDEO_SEGMENT_LENGTH),
 		))
-		response += fmt.Sprintf(WithBase("/hls/video_%d.ts?path=%s\n"), i, cacheName)
+		response += fmt.Sprintf(WithBase("/hls/video_%d.ts?path=%s\n"), i, key)
 	}
 	response += "#EXT-X-ENDLIST\n"
 	res.Header().Set("Content-Type", "application/x-mpegURL")
@@ -76,13 +90,12 @@ func playlistVideoHandler(ctx *App, res http.ResponseWriter, req *http.Request) 
 }
 
 func playlistAudioHandler(ctx *App, res http.ResponseWriter, req *http.Request) {
-	cacheName := req.URL.Query().Get("path")
-	cachePath := GetAbsolutePath(VIDEO_CACHE_PATH, cacheName)
-	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
+	key, path, ok := mediaPath(req)
+	if ok == false {
 		res.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	duration, err := probeDuration(cachePath)
+	duration, err := probeDuration(path)
 	if err != nil {
 		res.WriteHeader(http.StatusInternalServerError)
 		return
@@ -100,7 +113,7 @@ func playlistAudioHandler(ctx *App, res http.ResponseWriter, req *http.Request) 
 			float64(HLS_AUDIO_SEGMENT_LENGTH),
 			duration-float64(i*HLS_AUDIO_SEGMENT_LENGTH),
 		))
-		response += fmt.Sprintf(WithBase("/hls/audio_%d.ts?path=%s\n"), i, cacheName)
+		response += fmt.Sprintf(WithBase("/hls/audio_%d.ts?path=%s\n"), i, key)
 	}
 	response += "#EXT-X-ENDLIST\n"
 	res.Header().Set("Content-Type", "application/x-mpegURL")
@@ -113,13 +126,13 @@ func hlsAudioHandler(ctx *App, res http.ResponseWriter, req *http.Request) {
 		res.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	cachePath := GetAbsolutePath(VIDEO_CACHE_PATH, req.URL.Query().Get("path"))
-	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
+	_, path, ok := mediaPath(req)
+	if ok == false {
 		res.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
 	res.Header().Set("Content-Type", "video/mp2t")
-	if err := transcodeAudioSegment(req.Context(), cachePath, segmentNumber, res); err != nil {
+	if err := transcodeAudioSegment(req.Context(), path, segmentNumber, res); err != nil {
 		Log.Error("plg_video_transcoder::audio::run %s", err.Error())
 	}
 }
@@ -131,14 +144,14 @@ func hlsVideoHandler(ctx *App, res http.ResponseWriter, req *http.Request) {
 		res.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	cachePath := GetAbsolutePath(VIDEO_CACHE_PATH, req.URL.Query().Get("path"))
-	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
+	_, path, ok := mediaPath(req)
+	if ok == false {
 		Log.Info("[plugin hls]: invalid video")
 		res.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
 	res.Header().Set("Content-Type", "video/mp2t")
-	if err := transcodeVideoSegment(req.Context(), cachePath, segmentNumber, res); err != nil {
+	if err := transcodeVideoSegment(req.Context(), path, segmentNumber, res); err != nil {
 		Log.Error("plg_video_transcoder::video::run %s", err.Error())
 	}
 }

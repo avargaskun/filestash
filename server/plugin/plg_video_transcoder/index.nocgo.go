@@ -26,5 +26,5 @@ func servePlaylist(cacheName string) string {
 }
 
 func serveHLSChunks(r *mux.Router) {
-	ffmpeg.RegisterRoutes(r, VIDEO_CACHE_PATH, video_encoder())
+	ffmpeg.RegisterRoutes(r, video_encoder())
 }

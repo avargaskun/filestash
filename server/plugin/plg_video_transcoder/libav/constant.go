@@ -11,7 +11,6 @@ const (
 
 var (
 	HLS_SEGMENT_LENGTH        = 5
-	VIDEO_CACHE_PATH          = "data/cache/video/"
 	ENCODER            string = ""
 )
 

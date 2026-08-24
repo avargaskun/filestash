@@ -17,6 +17,8 @@ package-lock.json
 .tern-port
 .tern-project.js
 *_test.go
+# fork: our own regression tests are versioned
+!server/plugin/plg_video_transcoder/**/*_test.go
 cover.*
 www
 
