@@ -1,3 +1,54 @@
+# Fork notice
+
+This is **`avargaskun/filestash`**, a fork of
+[`mickael-kerjean/filestash`](https://github.com/mickael-kerjean/filestash) maintained for a
+single private deployment. Upstream's own README follows below.
+
+## Why the fork exists
+
+Upstream is rolling-release: its git tags stopped in 2019 and the official image
+(`machines/filestash`) is effectively `latest`-only, built from master on a private Jenkins.
+That is invisible to a semver-based update watcher, and it leaves no place to carry local
+patches. This fork exists to publish **semver-tagged images** and to carry a small set of
+patches on top of upstream master.
+
+## Images
+
+Published to **`ghcr.io/avargaskun/filestash`** (`linux/amd64`) on every release, tagged
+`X.Y.Z`, `X.Y`, `X` and `latest`. Releases are cut by
+[release-please](https://github.com/googleapis/release-please) from conventional-commit PR
+titles (`fix:` → patch, `feat:` → minor, `feat!:`/`BREAKING CHANGE` → major). The publish job
+is chained inside `.github/workflows/release-please.yml` on purpose: a tag created with
+`GITHUB_TOKEN` never triggers a second workflow. `workflow_dispatch` on that workflow takes a
+`tag` input for a manual re-publish.
+
+## Fork patches
+
+| Area | Change | Landed |
+|---|---|---|
+| `docker/Dockerfile` | Build from the fork checkout (upstream cloned `mickael-kerjean/filestash` at build time, so a fork could never build its own code) | 1.0.0 |
+| `docker/Dockerfile` | Ship the Intel VAAPI runtime — enable Debian's non-free component and install `intel-media-va-driver-non-free` + `vainfo` on amd64, so the transcoder's `h264_vaapi` encoder actually works | 1.0.0 |
+| `.github/workflows/` | release-please + GHCR publishing + a PR build/smoke CI job | 1.0.0 |
+
+## Upstream-sync policy
+
+- **`master` tracks upstream `master`.** Upstream is a moving rolling release with no tags to
+  sync against, so there is no automated sync — syncing is **manual and deliberate**.
+- **Cadence:** on demand — when an upstream change is wanted, or when a CVE/bug affects us.
+  There is no scheduled merge; an unattended fast-forward of a rolling upstream is exactly the
+  risk this fork exists to control.
+- **Mechanism:** `git fetch upstream && git merge upstream/master` on a branch, resolve, open a
+  PR with a conventional-commit title (`feat:` for a feature-bearing sync, `fix:` otherwise) so
+  release-please cuts a version for it. Never rebase master — published tags point into it.
+- **Every sync is a re-audit event.** Re-verify, at minimum: `log.telemetry` still defaults to
+  `false` and the telemetry payload has not grown; no new outbound endpoint appeared in the Go
+  backend or the first-party frontend JS; the fork patches above still apply and are still
+  needed.
+- Local remotes: `origin` = this fork, `upstream` =
+  `https://github.com/mickael-kerjean/filestash`.
+
+---
+
 ![screenshot](https://raw.githubusercontent.com/mickael-kerjean/filestash_images/master/.assets/photo.jpg)
 
 # What is this?
