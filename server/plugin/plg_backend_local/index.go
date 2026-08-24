@@ -109,6 +109,24 @@ func (this Local) Cat(path string) (io.ReadCloser, error) {
 	return f, nil
 }
 
+// LocalPath names the on-disk location of a regular file this backend serves,
+// for consumers that can read it directly instead of streaming a copy. It
+// applies the same symlink and permission checks as Cat.
+func (this Local) LocalPath(path string) (string, error) {
+	f, err := SafeOsOpenFile(path, os.O_RDONLY, os.ModePerm)
+	if err != nil {
+		return "", err
+	}
+	fs, err := f.Stat()
+	f.Close()
+	if err != nil {
+		return "", err
+	} else if fs.Mode().IsRegular() == false {
+		return "", ErrNotFound
+	}
+	return path, nil
+}
+
 func (this Local) Mkdir(path string) error {
 	return SafeOsMkdir(path, 0755)
 }

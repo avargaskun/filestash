@@ -8,6 +8,5 @@ const (
 )
 
 var (
-	VIDEO_CACHE_PATH        = "data/cache/video/"
-	ENCODER          string = ""
+	ENCODER string = ""
 )
