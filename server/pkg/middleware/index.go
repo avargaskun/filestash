@@ -2,23 +2,11 @@ package middleware
 
 import (
 	"net/http"
-	"time"
 	_ "unsafe"
 
 	. "github.com/mickael-kerjean/filestash/server/pkg/core"
 	. "github.com/mickael-kerjean/filestash/server/pkg/kernel"
 )
-
-func init() {
-	Hooks.Register.Onload(func() {
-		go func() {
-			for {
-				time.Sleep(10 * time.Second)
-				telemetry.Flush()
-			}
-		}()
-	})
-}
 
 func NewMiddlewareChain(fn HandlerFunc, m []Middleware) http.HandlerFunc {
 	for i := len(m) - 1; i >= 0; i-- {
