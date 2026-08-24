@@ -122,6 +122,18 @@ export function buttonChromecast($media) {
     return $el;
 }
 
+export function buttonQuality(options, selected, onChange) {
+    if (!options || options.length <= 1) return null;
+    const label = (q) => q === "original" ? "Original" : q;
+    const $el = createElement(`
+        <select class="video-quality" aria-label="quality">
+            ${options.map((q) => `<option value="${safe(q)}"${q === selected ? " selected" : ""}>${safe(label(q))}</option>`).join("")}
+        </select>
+    `);
+    $el.onchange = () => onChange($el.value);
+    return $el;
+}
+
 export function renderMenubar($menubar, ...buttons) {
     assert.type($menubar, ComponentMenubar);
     $menubar.render(buttons.filter(($button) => $button));

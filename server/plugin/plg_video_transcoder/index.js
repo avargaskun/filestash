@@ -1,10 +1,19 @@
-export default function (mime, url, transcoderEnabled = {{ .enabled }}) {
-    if (!transcoderEnabled) return [[mime, url]];
+export default function (mime, url, {
+    enabled = {{ .enabled }},
+    presets = {{ .presets }},
+    defaultPreset = "{{ .defaultPreset }}",
+    forceTranscodeDefault = {{ .forceTranscodeDefault }},
+} = {}) {
+    let transcodable = enabled;
     {{- range $item := splitList "," .blacklist }}
-    if (mime == "{{ $item | trim }}") return [[mime, url]];
+    if (mime == "{{ $item | trim }}") transcodable = false;
     {{- end }}
-    return [
-        [ "application/x-mpegURL", url + "&transcode=hls" ],
-        [ mime, url ],
-    ];
+    return {
+        original: [[mime, url]],
+        hls: (quality) => url + "&transcode=hls&preset=" + encodeURIComponent(quality),
+        transcodable,
+        presets,
+        defaultPreset,
+        forceTranscodeDefault,
+    };
 }

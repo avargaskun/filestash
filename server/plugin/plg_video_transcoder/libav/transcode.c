@@ -232,12 +232,18 @@ static int configure_video(stream *s, const FFRequest *req, char *errbuf, int er
 	s->enc->height = outH;
 
 	int hw_decode = s->dec->hw_device_ctx != NULL;
+	int64_t br = req->video_bitrate;
 	const char *name = s->enc_codec->name;
 	if (strcmp(name, "h264_vaapi") == 0) {
 		int ret = device(s, AV_HWDEVICE_TYPE_VAAPI, AV_PIX_FMT_VAAPI, outW, outH, errbuf, errlen);
 		if (ret < 0) {
 			return ret;
 		}
+		// upstream set no rate control here, so VAAPI ran at driver-default CQP
+		// and the real bitrate was unbounded; bound it per preset.
+		s->enc->bit_rate = br;
+		s->enc->rc_max_rate = br;
+		s->enc->rc_buffer_size = br * 2;
 		if (hw_decode) {
 			snprintf(s->graph_spec, sizeof(s->graph_spec), "scale_vaapi=%d:%d", outW, outH);
 		} else {
@@ -248,6 +254,9 @@ static int configure_video(stream *s, const FFRequest *req, char *errbuf, int er
 		if (ret < 0) {
 			return ret;
 		}
+		s->enc->bit_rate = br;
+		s->enc->rc_max_rate = br;
+		s->enc->rc_buffer_size = br * 2;
 		if (hw_decode) {
 			snprintf(s->graph_spec, sizeof(s->graph_spec), "scale_cuda=%d:%d", outW, outH);
 		} else {
@@ -255,7 +264,7 @@ static int configure_video(stream *s, const FFRequest *req, char *errbuf, int er
 		}
 	} else if (strcmp(name, "h264_v4l2m2m") == 0) {
 		s->enc->pix_fmt = AV_PIX_FMT_YUV420P;
-		s->enc->bit_rate = 2500000;
+		s->enc->bit_rate = br;
 		if (outW == s->dec->width && outH == s->dec->height) {
 			snprintf(s->graph_spec, sizeof(s->graph_spec), "format=yuv420p");
 		} else {
@@ -263,6 +272,9 @@ static int configure_video(stream *s, const FFRequest *req, char *errbuf, int er
 		}
 	} else if (strcmp(name, "libx264") == 0) {
 		s->enc->pix_fmt = AV_PIX_FMT_YUV420P;
+		s->enc->bit_rate = br;
+		s->enc->rc_max_rate = br;
+		s->enc->rc_buffer_size = br * 2;
 		av_dict_set(&s->enc_opts, "preset", "veryfast", 0);
 		av_dict_set(&s->enc_opts, "x264opts",
 		            "subme=0:me_range=4:rc_lookahead=10:me=dia:no_chroma_me:8x8dct=0:partitions=none", 0);

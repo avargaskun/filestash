@@ -10,6 +10,7 @@ typedef struct {
 	int end_sec;
 	int segment_len;
 	int max_height;
+	int video_bitrate;
 	int audio_bitrate;
 	char *errbuf;
 	int errlen;

@@ -10,21 +10,23 @@ import (
 	. "github.com/mickael-kerjean/filestash/server/common"
 	. "github.com/mickael-kerjean/filestash/server/middleware"
 	"github.com/mickael-kerjean/filestash/server/plugin/plg_video_transcoder/mediaref"
+	"github.com/mickael-kerjean/filestash/server/plugin/plg_video_transcoder/preset"
 
 	"github.com/gorilla/mux"
 )
 
-func MasterPlaylist(cacheName string) string {
+func MasterPlaylist(cacheName string, p preset.Preset) string {
 	master := "#EXTM3U\n"
 	master += "#EXT-X-VERSION:6\n"
 	master += fmt.Sprintf(`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="default",DEFAULT=YES,AUTOSELECT=YES,URI="%s"`+"\n", WithBase(fmt.Sprintf("/hls/audio.m3u8?path=%s", cacheName)))
-	master += `#EXT-X-STREAM-INF:BANDWIDTH=2500000,CODECS="avc1.64001f,mp4a.40.2",AUDIO="aud"` + "\n"
-	master += fmt.Sprintf(WithBase("/hls/video.m3u8?path=%s\n"), cacheName)
+	master += fmt.Sprintf(`#EXT-X-STREAM-INF:BANDWIDTH=%d,CODECS="avc1.64001f,mp4a.40.2",AUDIO="aud"`+"\n", p.Bitrate+AUDIO_BITRATE)
+	master += fmt.Sprintf(WithBase("/hls/video.m3u8?path=%s&preset=%s\n"), cacheName, p.Name)
 	return master
 }
 
-func RegisterRoutes(r *mux.Router, enc string) {
+func RegisterRoutes(r *mux.Router, enc string, defaultPreset string) {
 	ENCODER = enc
+	DEFAULT_PRESET = defaultPreset
 	r.PathPrefix(WithBase("/hls/audio.m3u8")).Handler(NewMiddlewareChain(
 		playlistAudioHandler,
 		[]Middleware{SecureHeaders},
@@ -59,6 +61,11 @@ func mediaPath(req *http.Request) (string, string, bool) {
 }
 
 func playlistVideoHandler(ctx *App, res http.ResponseWriter, req *http.Request) {
+	quality, ok := preset.FromRequest(req.URL.Query().Get("preset"), DEFAULT_PRESET)
+	if ok == false {
+		res.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	key, path, ok := mediaPath(req)
 	if ok == false {
 		res.WriteHeader(http.StatusServiceUnavailable)
@@ -82,7 +89,7 @@ func playlistVideoHandler(ctx *App, res http.ResponseWriter, req *http.Request) 
 			float64(HLS_VIDEO_SEGMENT_LENGTH),
 			duration-float64(i*HLS_VIDEO_SEGMENT_LENGTH),
 		))
-		response += fmt.Sprintf(WithBase("/hls/video_%d.ts?path=%s\n"), i, key)
+		response += fmt.Sprintf(WithBase("/hls/video_%d.ts?path=%s&preset=%s\n"), i, key, quality.Name)
 	}
 	response += "#EXT-X-ENDLIST\n"
 	res.Header().Set("Content-Type", "application/x-mpegURL")
@@ -144,6 +151,11 @@ func hlsVideoHandler(ctx *App, res http.ResponseWriter, req *http.Request) {
 		res.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	quality, ok := preset.FromRequest(req.URL.Query().Get("preset"), DEFAULT_PRESET)
+	if ok == false {
+		res.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	_, path, ok := mediaPath(req)
 	if ok == false {
 		Log.Info("[plugin hls]: invalid video")
@@ -151,7 +163,7 @@ func hlsVideoHandler(ctx *App, res http.ResponseWriter, req *http.Request) {
 		return
 	}
 	res.Header().Set("Content-Type", "video/mp2t")
-	if err := transcodeVideoSegment(req.Context(), path, segmentNumber, res); err != nil {
+	if err := transcodeVideoSegment(req.Context(), path, segmentNumber, res, quality); err != nil {
 		Log.Error("plg_video_transcoder::video::run %s", err.Error())
 	}
 }

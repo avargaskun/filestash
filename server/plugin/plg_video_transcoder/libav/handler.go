@@ -10,20 +10,22 @@ import (
 	. "github.com/mickael-kerjean/filestash/server/common"
 	. "github.com/mickael-kerjean/filestash/server/middleware"
 	"github.com/mickael-kerjean/filestash/server/plugin/plg_video_transcoder/mediaref"
+	"github.com/mickael-kerjean/filestash/server/plugin/plg_video_transcoder/preset"
 
 	"github.com/gorilla/mux"
 )
 
-func MasterPlaylist(cacheName string) string {
+func MasterPlaylist(cacheName string, p preset.Preset) string {
 	master := "#EXTM3U\n"
 	master += "#EXT-X-VERSION:3\n"
-	master += `#EXT-X-STREAM-INF:BANDWIDTH=2628000,CODECS="avc1.64001f,mp4a.40.2"` + "\n"
-	master += fmt.Sprintf(WithBase("/hls/index.m3u8?path=%s\n"), cacheName)
+	master += fmt.Sprintf(`#EXT-X-STREAM-INF:BANDWIDTH=%d,CODECS="avc1.64001f,mp4a.40.2"`+"\n", p.Bitrate+AUDIO_BITRATE)
+	master += fmt.Sprintf(WithBase("/hls/index.m3u8?path=%s&preset=%s\n"), cacheName, p.Name)
 	return master
 }
 
-func RegisterRoutes(r *mux.Router, enc string) {
+func RegisterRoutes(r *mux.Router, enc string, defaultPreset string) {
 	ENCODER = enc
+	DEFAULT_PRESET = defaultPreset
 	r.PathPrefix(WithBase("/hls/index.m3u8")).Handler(NewMiddlewareChain(
 		playlistHandler,
 		[]Middleware{SecureHeaders},
@@ -50,6 +52,11 @@ func mediaPath(req *http.Request) (string, string, bool) {
 }
 
 func playlistHandler(ctx *App, res http.ResponseWriter, req *http.Request) {
+	quality, ok := preset.FromRequest(req.URL.Query().Get("preset"), DEFAULT_PRESET)
+	if ok == false {
+		res.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	key, path, ok := mediaPath(req)
 	if ok == false {
 		res.WriteHeader(http.StatusServiceUnavailable)
@@ -73,7 +80,7 @@ func playlistHandler(ctx *App, res http.ResponseWriter, req *http.Request) {
 			float64(HLS_SEGMENT_LENGTH),
 			duration-float64(i*HLS_SEGMENT_LENGTH),
 		))
-		response += fmt.Sprintf(WithBase("/hls/segment_%d.ts?path=%s\n"), i, key)
+		response += fmt.Sprintf(WithBase("/hls/segment_%d.ts?path=%s&preset=%s\n"), i, key, quality.Name)
 	}
 	response += "#EXT-X-ENDLIST\n"
 	res.Header().Set("Content-Type", "application/x-mpegURL")
@@ -87,6 +94,11 @@ func segmentHandler(ctx *App, res http.ResponseWriter, req *http.Request) {
 		res.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	quality, ok := preset.FromRequest(req.URL.Query().Get("preset"), DEFAULT_PRESET)
+	if ok == false {
+		res.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	_, path, ok := mediaPath(req)
 	if ok == false {
 		Log.Info("[plugin hls]: invalid video")
@@ -94,7 +106,7 @@ func segmentHandler(ctx *App, res http.ResponseWriter, req *http.Request) {
 		return
 	}
 	res.Header().Set("Content-Type", "video/mp2t")
-	if err := transcodeSegment(req.Context(), path, segmentNumber, res); err != nil {
+	if err := transcodeSegment(req.Context(), path, segmentNumber, res, quality.Height, quality.Bitrate); err != nil {
 		Log.Error("plg_video_transcoder::segment::run %s", err.Error())
 	}
 }

@@ -35,7 +35,7 @@ func goInterruptCallback(handle C.uintptr_t) C.int {
 	return 0
 }
 
-func transcodeSegment(ctx context.Context, cachePath string, segmentNumber int, w io.Writer) (err error) {
+func transcodeSegment(ctx context.Context, cachePath string, segmentNumber int, w io.Writer, maxHeight int, videoBitrate int) (err error) {
 	h := cgo.NewHandle(w)
 	hctx := cgo.NewHandle(ctx)
 	req := C.FFRequest{
@@ -44,7 +44,8 @@ func transcodeSegment(ctx context.Context, cachePath string, segmentNumber int, 
 		start_sec:     C.int(segmentNumber * HLS_SEGMENT_LENGTH),
 		end_sec:       C.int((segmentNumber + 1) * HLS_SEGMENT_LENGTH),
 		segment_len:   C.int(HLS_SEGMENT_LENGTH),
-		max_height:    C.int(VIDEO_MAX_HEIGHT),
+		max_height:    C.int(maxHeight),
+		video_bitrate: C.int(videoBitrate),
 		audio_bitrate: C.int(AUDIO_BITRATE),
 		errbuf:        (*C.char)(C.malloc(512)), errlen: 512,
 		interrupt: C.uintptr_t(hctx),
