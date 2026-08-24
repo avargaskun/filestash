@@ -31,6 +31,7 @@ is chained inside `.github/workflows/release-please.yml` on purpose: a tag creat
 | `.github/workflows/` | release-please + GHCR publishing + a PR build/smoke CI job | 1.0.0 |
 | `plg_video_transcoder`, `plg_backend_local` | Stream local files without copying them into the video cache first. Upstream `io.Copy`s the whole source file before it will serve the master playlist, so a 40 GB remux costs a full disk-to-disk copy before the first HLS segment can even be requested. Backends may now expose `LocalPath()`; when the session's backend does, the transcoder points the segment encoders at the real file. Other backends keep the copy path | 1.1.0 |
 | `plg_video_transcoder/mediaref` | Resolve the HLS `?path=` parameter through a server-side key→path registry instead of joining it onto the cache directory. The HLS playlist and segment routes have no session middleware, so upstream's `filepath.Join(cacheDir, userInput)` was an unauthenticated arbitrary-file read (`?path=../../../../etc/...`). Regression tests: `server/plugin/plg_video_transcoder/mediaref/mediaref_test.go`, run in CI | 1.1.0 |
+| `pkg/middleware`, `pkg/config` | Remove the telemetry uploader. Upstream buffers every request — full URI (i.e. the file paths of the library), client IP, user agent, referer, backend, share id, salted session hash, license — and POSTs batches to `downloads.filestash.app/event` every 10 s whenever `log.telemetry` is on. It defaults off, but it is one admin-console checkbox away and was default-**on** earlier in the project's history. The uploader, its flush goroutine and the `log.telemetry` config knob are all gone, and `LogEntry` is trimmed to what the local access log actually prints, so there is nothing left to switch on. Verify on any image with `grep -a downloads.filestash.app /app/filestash` — no match | 1.1.0 |
 
 ## Upstream-sync policy
 
@@ -42,10 +43,10 @@ is chained inside `.github/workflows/release-please.yml` on purpose: a tag creat
 - **Mechanism:** `git fetch upstream && git merge upstream/master` on a branch, resolve, open a
   PR with a conventional-commit title (`feat:` for a feature-bearing sync, `fix:` otherwise) so
   release-please cuts a version for it. Never rebase master — published tags point into it.
-- **Every sync is a re-audit event.** Re-verify, at minimum: `log.telemetry` still defaults to
-  `false` and the telemetry payload has not grown; no new outbound endpoint appeared in the Go
-  backend or the first-party frontend JS; the fork patches above still apply and are still
-  needed.
+- **Every sync is a re-audit event.** Re-verify, at minimum: the telemetry removal still holds
+  (`grep -a downloads.filestash.app` on the built binary must find nothing — a merge can quietly
+  restore the uploader); no new outbound endpoint appeared in the Go backend or the first-party
+  frontend JS; the fork patches above still apply and are still needed.
 - Local remotes: `origin` = this fork, `upstream` =
   `https://github.com/mickael-kerjean/filestash`.
 
