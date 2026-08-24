@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/avargaskun/filestash/compare/v1.1.0...v1.2.0) (2026-08-24)
+
+
+### Features
+
+* client-selectable transcode quality presets and force-transcode ([#6](https://github.com/avargaskun/filestash/issues/6)) ([5448333](https://github.com/avargaskun/filestash/commit/5448333982d36947bc138809236a16bd73de4c18))
+
 ## [1.1.0](https://github.com/avargaskun/filestash/compare/v1.0.0...v1.1.0) (2026-08-24)
 
 
