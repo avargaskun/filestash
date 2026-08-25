@@ -1,6 +1,6 @@
-import { createElement } from "../../lib/skeleton/index.js";
+import { createElement, onDestroy } from "../../lib/skeleton/index.js";
 import rxjs, { effect } from "../../lib/rx.js";
-import { animate, slideYIn } from "../../lib/animate.js";
+import { animate } from "../../lib/animate.js";
 import { qs, safe } from "../../lib/dom.js";
 import { settings_get, settings_put } from "../../lib/settings.js";
 import { ApplicationError } from "../../lib/error.js";
@@ -21,6 +21,12 @@ import "../../components/icon.js";
 const STATUS_PLAYING = "PLAYING";
 const STATUS_PAUSED = "PAUSED";
 const STATUS_BUFFERING = "BUFFERING";
+
+const AUTOHIDE_DELAY = 3000;
+const SKIP_SECONDS = 10;
+const ICON_FULLSCREEN_EXIT = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2YyZjJmMiIgZD0iTTUgMTZoM3YzaDJ2LTVINXYyem0zLThINXYyaDVWNUg4djN6bTYgMTFoMnYtM2gzdi0yaC01djV6bTItMTFWNWgtMnY1aDVWOGgtM3oiLz48L3N2Zz4K";
+const ICON_SKIP_BACK = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzZmNmY2ZiIgZD0iTTEyIDVWMUw3IDZsNSA1VjdjMy4zMSAwIDYgMi42OSA2IDZzLTIuNjkgNi02IDYtNi0yLjY5LTYtNkg0YzAgNC40MiAzLjU4IDggOCA4czgtMy41OCA4LTgtMy41OC04LTgtOHptLTEuMSAxMUgxMHYtMy4zTDkgMTN2LS43bDEuOC0uNmguMVYxNnptNC4zLTEuOGMwIC4zIDAgLjYtLjEuOGwtLjMuNnMtLjMuMy0uNS4zLS40LjEtLjYuMS0uNCAwLS42LS4xLS4zLS4yLS41LS4zLS4yLS4zLS4zLS42LS4xLS41LS4xLS44di0uN2MwLS4zIDAtLjYuMS0uOGwuMy0uNnMuMy0uMy41LS4zLjQtLjEuNi0uMS40IDAgLjYuMS4zLjIuNS4zLjIuMy4zLjYuMS41LjEuOHYuN3ptLS45LS44di0uNXMtLjEtLjItLjEtLjMtLjEtLjEtLjItLjItLjItLjEtLjMtLjEtLjIgMC0uMy4xbC0uMi4ycy0uMS4yLS4xLjN2MnMuMS4yLjEuMy4xLjEuMi4yLjIuMS4zLjEuMiAwIC4zLS4xbC4yLS4ycy4xLS4yLjEtLjN2LTEuNXoiLz48L3N2Zz4K";
+const ICON_SKIP_FORWARD = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzZmNmY2ZiIgZD0iTTE4IDEzYzAgMy4zMS0yLjY5IDYtNiA2cy02LTIuNjktNi02IDIuNjktNiA2LTZ2NGw1LTUtNS01djRjLTQuNDIgMC04IDMuNTgtOCA4czMuNTggOCA4IDggOC0zLjU4IDgtOGgtMnptLTcuNDYgM0g5LjY2di0zLjI4bC0xLjAxLjMxdi0uN2wxLjgtLjY0aC4wOVYxNnptNC4xOC0xLjcxYzAgLjMyLS4wMy42LS4xLjgycy0uMTcuNDItLjI5LjU3LS4yOC4yNi0uNDUuMzMtLjM3LjEtLjU5LjEtLjQxLS4wMy0uNTktLjEtLjMzLS4xOC0uNDYtLjMzLS4yMy0uMzQtLjMtLjU3LS4xMS0uNS0uMTEtLjgydi0uNzRjMC0uMzIuMDMtLjYuMS0uODJzLjE3LS40Mi4yOS0uNTcuMjgtLjI2LjQ1LS4zMy4zNy0uMS41OS0uMS40MS4wMy41OS4xLjMzLjE4LjQ2LjMzLjIzLjM0LjMuNTcuMTEuNS4xMS44MnYuNzR6bS0uODUtLjg2YzAtLjE5LS4wMS0uMzUtLjA0LS40OHMtLjA3LS4yMy0uMTItLjMxLS4xMS0uMTQtLjE5LS4xNy0uMTYtLjA1LS4yNS0uMDUtLjE4LjAyLS4yNS4wNS0uMTQuMDktLjE5LjE3LS4wOS4xOC0uMTIuMzEtLjA0LjI5LS4wNC40OHYuOTdjMCAuMTkuMDEuMzUuMDQuNDhzLjA3LjI0LjEyLjMyLjExLjE0LjE5LjE3LjE2LjA1LjI1LjA1LjE4LS4wMi4yNS0uMDUuMTMtLjA5LjE5LS4xNy4wOS0uMTkuMTEtLjMyLjA0LS4yOS4wNC0uNDh2LS45N3oiLz48L3N2Zz4K";
 
 export default function(render, { getFilename, getDownloadUrl, acl$, mime }) {
     const $page = createElement(`
@@ -45,9 +51,11 @@ export default function(render, { getFilename, getDownloadUrl, acl$, mime }) {
                                 </div>
                                 <div class="progress-placeholder"></div>
                             </div>
+                            <img class="component_icon skip_button" draggable="false" src="${ICON_SKIP_BACK}" alt="skip_backward" role="button" tabindex="0" aria-label="skip back 10 seconds">
                             <img class="component_icon" draggable="false" src="${ICON.PLAY}" alt="play">
                             <img class="component_icon hidden" draggable="false" src="${ICON.PAUSE}" alt="pause">
                             <component-icon name="loading" class="hidden"></component-icon>
+                            <img class="component_icon skip_button" draggable="false" src="${ICON_SKIP_FORWARD}" alt="skip_forward" role="button" tabindex="0" aria-label="skip forward 10 seconds">
 
                             <img class="component_icon hidden" draggable="false" src="${ICON.VOLUME_MUTE}" alt="volume_mute">
                             <img class="component_icon hidden" draggable="false" src="${ICON.VOLUME_LOW}" alt="volume_low">
@@ -74,6 +82,8 @@ export default function(render, { getFilename, getDownloadUrl, acl$, mime }) {
         play: qs($page, `.videoplayer_control [alt="play"]`),
         pause: qs($page, `.videoplayer_control [alt="pause"]`),
         loading: qs($page, `.videoplayer_control component-icon[name="loading"]`),
+        skip_backward: qs($page, `.videoplayer_control [alt="skip_backward"]`),
+        skip_forward: qs($page, `.videoplayer_control [alt="skip_forward"]`),
     };
     const $volume = {
         range: qs($page, `input[type="range"]`),
@@ -145,11 +155,52 @@ export default function(render, { getFilename, getDownloadUrl, acl$, mime }) {
         }));
     };
 
+    // fullscreen: the target is the whole player page so the overlay controls and the
+    // quality selector come along; the same button doubles as the exit affordance.
+    const fullscreenElement = () => document.fullscreenElement ||
+        document.webkitFullscreenElement || document.mozFullScreenElement || null;
+    const isFullscreen = () => fullscreenElement() === $page;
+    const canFullscreen = !!($page.requestFullscreen || $page.webkitRequestFullscreen || $page.mozRequestFullScreen);
+    const requestFullscreen = () => {
+        if ($page.requestFullscreen) return $page.requestFullscreen();
+        else if ($page.webkitRequestFullscreen) return $page.webkitRequestFullscreen();
+        else if ($page.mozRequestFullScreen) return $page.mozRequestFullScreen();
+        return null;
+    };
+    const exitFullscreen = () => {
+        if (document.exitFullscreen) return document.exitFullscreen();
+        else if (document.webkitExitFullscreen) return document.webkitExitFullscreen();
+        else if (document.mozCancelFullScreen) return document.mozCancelFullScreen();
+        return null;
+    };
+    // an unhandled rejection here would reach window.onerror and replace the whole page
+    // with the error screen, so every fullscreen/orientation promise is swallowed.
+    const swallow = (maybePromise) => {
+        if (maybePromise && typeof maybePromise.catch === "function") maybePromise.catch(() => {});
+    };
+    const toggleFullscreen = () => {
+        if (fullscreenElement()) swallow(exitFullscreen());
+        else swallow(requestFullscreen());
+    };
+    const lockOrientation = () => {
+        try {
+            if (screen.orientation && typeof screen.orientation.lock === "function") swallow(screen.orientation.lock("landscape"));
+        } catch (err) { /* not supported on this engine */ }
+    };
+    const unlockOrientation = () => {
+        try {
+            if (screen.orientation && typeof screen.orientation.unlock === "function") screen.orientation.unlock();
+        } catch (err) { /* not supported on this engine */ }
+    };
+
+    const $fullscreen = buttonFullscreen($page, canFullscreen ? toggleFullscreen : undefined);
+    const $fullscreenIcon = $fullscreen.querySelector ? $fullscreen.querySelector("img") : null;
+    const ICON_FULLSCREEN_ENTER = $fullscreenIcon ? $fullscreenIcon.getAttribute("src") : null;
     renderMenubar(
         qs($page, "component-menubar"),
         buttonDownload(getDownloadUrl()),
         buttonQuality(qualities, initialQuality, (q) => quality$.next(q)),
-        buttonFullscreen($video),
+        $fullscreen,
         buttonChromecast($video),
     );
 
@@ -171,7 +222,36 @@ export default function(render, { getFilename, getDownloadUrl, acl$, mime }) {
             $volume.icon_normal.classList.remove("hidden");
         }
     };
+    // auto-hide: only armed while fullscreen AND playing. `playerStatus` exists because
+    // setStatus keeps no readable state of its own.
+    let playerStatus = null;
+    let hideTimer = null;
+    let hiddenAtPointerDown = false;
+    const controlsHidden = () => $page.classList.contains("controls-hidden");
+    const stopHideTimer = () => {
+        if (hideTimer === null) return;
+        clearTimeout(hideTimer);
+        hideTimer = null;
+    };
+    const startHideTimer = () => {
+        stopHideTimer();
+        if (!isFullscreen() || playerStatus !== STATUS_PLAYING) return;
+        hideTimer = setTimeout(() => {
+            hideTimer = null;
+            if (isFullscreen() && playerStatus === STATUS_PLAYING) $page.classList.add("controls-hidden");
+        }, AUTOHIDE_DELAY);
+    };
+    const revealControls = () => {
+        $page.classList.remove("controls-hidden");
+        startHideTimer();
+    };
+    onDestroy(() => {
+        stopHideTimer();
+        unlockOrientation();
+    });
+
     const setStatus = (status) => {
+        playerStatus = status;
         switch (status) {
         case "PLAYING":
             $control.play.classList.add("hidden");
@@ -195,9 +275,29 @@ export default function(render, { getFilename, getDownloadUrl, acl$, mime }) {
         }
         $loader.classList.add("hidden");
         $control.main.classList.remove("hidden");
+        $control.main.classList.add("visible");
+        switch (status) {
+        case STATUS_PLAYING:
+            startHideTimer();
+            break;
+        case STATUS_PAUSED:
+            stopHideTimer();
+            $page.classList.remove("controls-hidden");
+            break;
+        case STATUS_BUFFERING:
+            // suspend the timer but keep the current visibility: every HLS skip and
+            // rebuffer emits `waiting`, and revealing here would flash the bar.
+            stopHideTimer();
+            break;
+        }
     };
     const setSeek = (newTime, shouldSet = false) => {
-        if (shouldSet) $video.currentTime = newTime;
+        if (shouldSet) {
+            // assigning a non-finite value to currentTime throws (WebIDL restricted
+            // double) and effect() rethrows into window.onerror = the app error screen.
+            if (!isFinite(newTime)) return;
+            $video.currentTime = newTime;
+        }
         const width = 100 * (newTime / $video.duration);
         qs($page, ".progress .progress-active").style.width = `${width}%`;
         if (!isNaN($video.duration)) {
@@ -222,10 +322,7 @@ export default function(render, { getFilename, getDownloadUrl, acl$, mime }) {
                 rxjs.fromEvent(document, "keydown").pipe(rxjs.filter((e) => e.code === "Space"), rxjs.first()),
             );
         }),
-        rxjs.tap(() => {
-            setStatus(STATUS_PLAYING);
-            animate($control.main, { time: 300, keyframes: slideYIn(5) });
-        }),
+        rxjs.tap(() => setStatus(STATUS_PLAYING)),
         rxjs.catchError(ctrlError()),
         rxjs.tap(() => init$.next()),
     ));
@@ -279,6 +376,50 @@ export default function(render, { getFilename, getDownloadUrl, acl$, mime }) {
         rxjs.debounceTime(50),
         rxjs.tap(setStatus),
     ));
+
+    // feature3b: player control - skip +/- 10s. Its own stream on purpose: feature3's
+    // debounceTime(50) would collapse two rapid taps into a single skip.
+    effect(rxjs.merge(
+        rxjs.fromEvent($control.skip_backward, "click").pipe(rxjs.mapTo(-SKIP_SECONDS)),
+        rxjs.fromEvent($control.skip_forward, "click").pipe(rxjs.mapTo(SKIP_SECONDS)),
+    ).pipe(
+        rxjs.skipUntil(init$),
+        rxjs.tap((delta) => {
+            // the source is torn down and reloaded on every quality switch, so duration
+            // is NaN for the whole switch - a skip tap then must be a silent no-op.
+            if (!isFinite($video.duration) || !isFinite($video.currentTime)) return;
+            setSeek(Math.max(0, Math.min($video.duration, $video.currentTime + delta)), true);
+        }),
+    ));
+
+    // feature3c: fullscreen state sync - Esc, the android back gesture and the toggle
+    // button all land here, so the class and the icon can never desync.
+    effect(rxjs.merge(
+        rxjs.fromEvent(document, "fullscreenchange"),
+        rxjs.fromEvent(document, "webkitfullscreenchange"),
+        rxjs.fromEvent(document, "mozfullscreenchange"),
+    ).pipe(rxjs.tap(() => {
+        const on = isFullscreen();
+        $page.classList.toggle("is-fullscreen", on);
+        if ($fullscreenIcon) $fullscreenIcon.setAttribute("src", on ? ICON_FULLSCREEN_EXIT : ICON_FULLSCREEN_ENTER);
+        if ($fullscreen.setAttribute) $fullscreen.setAttribute("aria-label", on ? "exit fullscreen" : "fullscreen");
+        if (on) lockOrientation();
+        else unlockOrientation();
+        $page.classList.remove("controls-hidden");
+        startHideTimer();
+    })));
+
+    // feature3d: auto-hide reveal. The latch is read by feature8 so that the tap which
+    // reveals the controls does not also toggle play/pause (pointerdown precedes click).
+    effect(rxjs.merge(
+        rxjs.fromEvent($page, "pointerdown"),
+        rxjs.fromEvent($page, "mousemove"),
+        rxjs.fromEvent(document, "keydown"),
+    ).pipe(rxjs.tap((e) => {
+        if (e.type === "pointerdown") hiddenAtPointerDown = isFullscreen() && controlsHidden();
+        if (!isFullscreen()) return;
+        revealControls();
+    })));
 
     // feature4: player control - seek
     effect(rxjs.fromEvent($progress, "click").pipe(
@@ -366,7 +507,7 @@ export default function(render, { getFilename, getDownloadUrl, acl$, mime }) {
     // feature8: player control - keyboard shortcut
     effect(rxjs.merge(
         rxjs.fromEvent(document, "keydown").pipe(rxjs.map((e) => e.code)),
-        rxjs.fromEvent($video, "click").pipe(rxjs.mapTo("Space")),
+        rxjs.fromEvent($video, "click").pipe(rxjs.filter(() => !hiddenAtPointerDown), rxjs.mapTo("Space")),
     ).pipe(
         rxjs.skipUntil(init$),
         rxjs.tap((code) => {
