@@ -19,6 +19,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # the ffmpeg package reaches server/common, which needs the generated build constants
+      - name: go generate (build constants)
+        run: go generate ./server/pkg/env/...
       - name: go test (transcoder)
         run: go test -race -v ./server/plugin/plg_video_transcoder/mediaref/... ./server/plugin/plg_video_transcoder/preset/... ./server/plugin/plg_video_transcoder/ffmpeg/...
 
