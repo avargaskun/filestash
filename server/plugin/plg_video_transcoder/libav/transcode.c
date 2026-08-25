@@ -765,7 +765,7 @@ int ff_transcode_segment(const FFRequest *req, uintptr_t writer) {
 	return ret;
 }
 
-int ff_probe_duration(const char *path, double *out, char *errbuf, int errlen) {
+int ff_probe_media(const char *path, double *duration, int *has_audio, char *errbuf, int errlen) {
 	if (errlen > 0) {
 		errbuf[0] = '\0';
 	}
@@ -780,7 +780,8 @@ int ff_probe_duration(const char *path, double *out, char *errbuf, int errlen) {
 		avformat_close_input(&fmt);
 		return ret;
 	}
-	*out = (double)fmt->duration / AV_TIME_BASE;
+	*duration = (double)fmt->duration / AV_TIME_BASE;
+	*has_audio = av_find_best_stream(fmt, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0) >= 0 ? 1 : 0;
 	avformat_close_input(&fmt);
 	return 0;
 }

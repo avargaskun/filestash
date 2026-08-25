@@ -19,7 +19,7 @@ typedef struct {
 
 int ff_transcode_segment(const FFRequest *req, uintptr_t writer);
 
-int ff_probe_duration(const char *path, double *out, char *errbuf, int errlen);
+int ff_probe_media(const char *path, double *duration, int *has_audio, char *errbuf, int errlen);
 
 void ff_set_log_quiet(void);
 

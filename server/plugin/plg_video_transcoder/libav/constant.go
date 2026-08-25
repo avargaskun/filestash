@@ -6,6 +6,8 @@ import (
 
 const (
 	AUDIO_BITRATE = 128000
+	VIDEO_CODEC   = "avc1.64001f"
+	AUDIO_CODEC   = "mp4a.40.2"
 )
 
 var (

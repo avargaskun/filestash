@@ -111,31 +111,52 @@ func runFFmpeg(ctx context.Context, args []string, w io.Writer) error {
 	return nil
 }
 
-func probeDuration(path string) (float64, error) {
+func probeMedia(path string) (float64, bool, error) {
 	out, err := exec.Command(
 		"ffprobe",
 		"-v", "error",
-		"-show_entries", "format=duration",
+		"-show_entries", "format=duration:stream=codec_type",
 		"-of", "json",
 		path,
 	).Output()
 	if err != nil {
-		return 0, fmt.Errorf("ffprobe: %w", err)
+		return 0, false, fmt.Errorf("ffprobe: %w", err)
 	}
 	var parsed struct {
 		Format struct {
 			Duration string `json:"duration"`
 		} `json:"format"`
+		Streams []struct {
+			CodecType string `json:"codec_type"`
+		} `json:"streams"`
 	}
 	if err := json.Unmarshal(out, &parsed); err != nil {
-		return 0, fmt.Errorf("ffprobe parse: %w", err)
+		return 0, false, fmt.Errorf("ffprobe parse: %w", err)
 	}
 	if parsed.Format.Duration == "" {
-		return 0, errors.New("ffprobe: no duration")
+		return 0, false, errors.New("ffprobe: no duration")
 	}
 	d, err := strconv.ParseFloat(parsed.Format.Duration, 64)
 	if err != nil {
-		return 0, fmt.Errorf("ffprobe duration: %w", err)
+		return 0, false, fmt.Errorf("ffprobe duration: %w", err)
 	}
-	return d, nil
+	hasAudio := false
+	for _, s := range parsed.Streams {
+		if s.CodecType == "audio" {
+			hasAudio = true
+			break
+		}
+	}
+	return d, hasAudio, nil
+}
+
+// HasAudio reports whether the source carries an audio stream. An unprobeable
+// source is reported as audio-bearing: that keeps the historical playlist shape
+// and leaves the failure to the segment encoder.
+func HasAudio(path string) bool {
+	_, hasAudio, err := probeMedia(path)
+	if err != nil {
+		return true
+	}
+	return hasAudio
 }

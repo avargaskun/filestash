@@ -13,8 +13,8 @@ func isActive() bool {
 	return true
 }
 
-func servePlaylist(cacheName string, p preset.Preset) string {
-	return libav.MasterPlaylist(cacheName, p)
+func servePlaylist(cacheName string, sourcePath string, p preset.Preset) string {
+	return libav.MasterPlaylist(cacheName, p, libav.HasAudio(sourcePath))
 }
 
 func serveHLSChunks(r *mux.Router) {
