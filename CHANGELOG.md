@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.2](https://github.com/avargaskun/filestash/compare/v1.3.1...v1.3.2) (2026-08-25)
+
+
+### Bug Fixes
+
+* survive and cleanly end HLS segments whose window holds no video frame ([#12](https://github.com/avargaskun/filestash/issues/12)) ([c3241e2](https://github.com/avargaskun/filestash/commit/c3241e2573e31d3d532e3999fbb5d1441b498745))
+
 ## [1.3.1](https://github.com/avargaskun/filestash/compare/v1.3.0...v1.3.1) (2026-08-25)
 
 
