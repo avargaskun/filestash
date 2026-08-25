@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/avargaskun/filestash/compare/v1.3.0...v1.3.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* declare only the codecs a source actually has in the HLS master playlist ([#10](https://github.com/avargaskun/filestash/issues/10)) ([aea0a2e](https://github.com/avargaskun/filestash/commit/aea0a2e541c9b79a8260d586d5da8e1151c42621))
+
 ## [1.3.0](https://github.com/avargaskun/filestash/compare/v1.2.0...v1.3.0) (2026-08-25)
 
 
