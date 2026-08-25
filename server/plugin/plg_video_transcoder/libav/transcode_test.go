@@ -51,20 +51,38 @@ func TestTranscodeSegmentZeroFrameWindow(t *testing.T) {
 
 	// Degenerate in-range window (segment 1, [5,10) s) — no video frame. Pre-fix
 	// this SIGSEGV'd and took the process (hence this test binary) down; post-fix
-	// it must return without error and without crashing.
+	// it must return without error and without crashing, and must never be empty
+	// (alt-(b): an empty terminal segment fatals hls.js). This fixture has an
+	// audio tail, so the muxer emits an audio-only TS here.
 	n1, err := transcode(1)
 	if err != nil {
 		t.Fatalf("degenerate in-range segment 1 returned an error (expected clean success): %v", err)
 	}
-	t.Logf("degenerate in-range segment 1: body=%d bytes (0 => muxer emitted nothing)", n1)
+	if n1 == 0 {
+		t.Fatalf("degenerate in-range segment 1 produced a 0-byte body; alt-(b) must emit a non-empty TS")
+	}
+	t.Logf("degenerate in-range segment 1: body=%d bytes", n1)
 
-	// Out-of-range segment index — degenerate by construction (no frame can be
-	// near [250,255) s). Same crash path; must survive.
+	// Out-of-range segment index — degenerate by construction (no frame, and no
+	// audio, near [250,255) s). Same crash path; must survive AND, with both
+	// streams empty, the muxer writes nothing, so alt-(b) substitutes the canned
+	// minimal TS verbatim.
 	n50, err := transcode(50)
 	if err != nil {
 		t.Fatalf("out-of-range segment 50 returned an error (expected clean success): %v", err)
 	}
-	t.Logf("out-of-range segment 50: body=%d bytes", n50)
+	if n50 == 0 {
+		t.Fatalf("out-of-range segment 50 produced a 0-byte body; alt-(b) minimal-TS substitution did not fire")
+	}
+	if n50 != len(minimalTS) {
+		t.Fatalf("out-of-range segment 50 body=%d bytes, want the embedded minimal TS (%d bytes)", n50, len(minimalTS))
+	}
+	t.Logf("out-of-range segment 50: body=%d bytes (== embedded minimal TS)", n50)
+
+	// Sanity: the embedded minimal TS itself must be present and non-trivial.
+	if len(minimalTS) < 500 {
+		t.Fatalf("embedded minimal TS is implausibly small (%d bytes) — embed failed", len(minimalTS))
+	}
 
 	// Reaching here at all proves the guard held: a NULL-deref SIGSEGV inside
 	// cgo cannot be recovered and would have aborted the test process.
