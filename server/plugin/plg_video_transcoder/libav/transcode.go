@@ -11,6 +11,8 @@ import (
 	"io"
 	"runtime/cgo"
 	"unsafe"
+
+	. "github.com/mickael-kerjean/filestash/server/common"
 )
 
 func init() {
@@ -35,8 +37,23 @@ func goInterruptCallback(handle C.uintptr_t) C.int {
 	return 0
 }
 
+// countingWriter records how many bytes the C muxer actually wrote to the
+// response, so the caller can tell a zero-frame window that produced a valid
+// (audio-only) TS from one where the muxer emitted nothing at all.
+type countingWriter struct {
+	w io.Writer
+	n int64
+}
+
+func (cw *countingWriter) Write(p []byte) (int, error) {
+	n, err := cw.w.Write(p)
+	cw.n += int64(n)
+	return n, err
+}
+
 func transcodeSegment(ctx context.Context, cachePath string, segmentNumber int, w io.Writer, maxHeight int, videoBitrate int) (err error) {
-	h := cgo.NewHandle(w)
+	cw := &countingWriter{w: w}
+	h := cgo.NewHandle(io.Writer(cw))
 	hctx := cgo.NewHandle(ctx)
 	req := C.FFRequest{
 		path:          C.CString(cachePath),
@@ -53,6 +70,13 @@ func transcodeSegment(ctx context.Context, cachePath string, segmentNumber int, 
 
 	if ret := C.ff_transcode_segment(&req, C.uintptr_t(h)); ret < 0 && ctx.Err() == nil {
 		err = fmt.Errorf("%s", C.GoString(req.errbuf))
+	} else if ret == C.FF_SEGMENT_NO_FRAMES {
+		Log.Info("plg_video_transcoder::segment::no-frames path=%s segment=%d bytes=%d", cachePath, segmentNumber, cw.n)
+		if cw.n == 0 {
+			if _, werr := cw.Write(minimalTS); werr != nil && err == nil {
+				err = fmt.Errorf("write minimal segment: %w", werr)
+			}
+		}
 	}
 
 	C.free(unsafe.Pointer(req.path))
