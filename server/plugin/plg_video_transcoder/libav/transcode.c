@@ -40,6 +40,7 @@ typedef struct {
 	int64_t last_dts;
 	int done;
 	int frames_in;
+	int frames_enc;
 
 	char graph_spec[256];
 } stream;
@@ -506,6 +507,7 @@ static int push_filter(ctx *c, stream *s, AVFrame *in) {
 		if (ret < 0) {
 			return ret;
 		}
+		s->frames_enc++;
 		ret = drain_encoder(c, s);
 		if (ret < 0) {
 			return ret;
@@ -571,6 +573,7 @@ static int run(ctx *c, const FFRequest *req, char *errbuf, int errlen) {
 		s->trim = 0;
 		s->done = 0;
 		s->frames_in = 0;
+		s->frames_enc = 0;
 		s->last_dts = INT64_MIN;
 		if (s->type == AVMEDIA_TYPE_AUDIO) {
 			int64_t margin = (int64_t)(PREROLL_SEC * tb.den / tb.num);
@@ -638,13 +641,16 @@ static int run(ctx *c, const FFRequest *req, char *errbuf, int errlen) {
 		if (ret < 0) {
 			return fail(errbuf, errlen, ret, "flush filter");
 		}
-		ret = avcodec_send_frame(s->enc, NULL);
-		if (ret < 0 && ret != AVERROR_EOF) {
-			return fail(errbuf, errlen, ret, "flush encoder");
-		}
-		ret = drain_encoder(c, s);
-		if (ret < 0) {
-			return fail(errbuf, errlen, ret, "drain encoder");
+		// libavcodec's hw encoders NULL-deref the EOF flush of a never-fed encoder (hw_base_encode.c:507, ctx->pic_end->pts)
+		if (s->frames_enc > 0) {
+			ret = avcodec_send_frame(s->enc, NULL);
+			if (ret < 0 && ret != AVERROR_EOF) {
+				return fail(errbuf, errlen, ret, "flush encoder");
+			}
+			ret = drain_encoder(c, s);
+			if (ret < 0) {
+				return fail(errbuf, errlen, ret, "drain encoder");
+			}
 		}
 	}
 
