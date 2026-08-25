@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/avargaskun/filestash/compare/v1.2.0...v1.3.0) (2026-08-25)
+
+
+### Features
+
+* fullscreen player controls with +/-10s skip and auto-hide ([#8](https://github.com/avargaskun/filestash/issues/8)) ([9d48e43](https://github.com/avargaskun/filestash/commit/9d48e43b77caef10485cb35e77f05cf6682cae66))
+
 ## [1.2.0](https://github.com/avargaskun/filestash/compare/v1.1.0...v1.2.0) (2026-08-24)
 
 
