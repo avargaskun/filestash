@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.3](https://github.com/avargaskun/filestash/compare/v1.3.2...v1.3.3) (2026-08-25)
+
+
+### Bug Fixes
+
+* skip the encoder EOF flush for a segment that never fed the encoder ([e29f705](https://github.com/avargaskun/filestash/commit/e29f70520bffb88d99398958174df82735f5b5d8))
+
 ## [1.3.2](https://github.com/avargaskun/filestash/compare/v1.3.1...v1.3.2) (2026-08-25)
 
 
