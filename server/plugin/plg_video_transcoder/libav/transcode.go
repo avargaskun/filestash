@@ -63,14 +63,26 @@ func transcodeSegment(ctx context.Context, cachePath string, segmentNumber int, 
 	return err
 }
 
-func probeDuration(path string) (float64, error) {
+func probeMedia(path string) (float64, bool, error) {
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 
-	var out C.double
+	var duration C.double
+	var hasAudio C.int
 	var errbuf [256]C.char
-	if ret := C.ff_probe_duration(cPath, &out, &errbuf[0], C.int(len(errbuf))); ret < 0 {
-		return 0, fmt.Errorf("%s", C.GoString(&errbuf[0]))
+	if ret := C.ff_probe_media(cPath, &duration, &hasAudio, &errbuf[0], C.int(len(errbuf))); ret < 0 {
+		return 0, false, fmt.Errorf("%s", C.GoString(&errbuf[0]))
 	}
-	return float64(out), nil
+	return float64(duration), hasAudio != 0, nil
+}
+
+// HasAudio reports whether the source carries an audio stream. An unprobeable
+// source is reported as audio-bearing: that keeps the historical playlist shape
+// and leaves the failure to the segment encoder.
+func HasAudio(path string) bool {
+	_, hasAudio, err := probeMedia(path)
+	if err != nil {
+		return true
+	}
+	return hasAudio
 }

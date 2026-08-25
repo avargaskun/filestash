@@ -80,7 +80,7 @@ func createPlaylist(reader io.ReadCloser, ctx *App, res *http.ResponseWriter, re
 		if err := mediaref.Register(cacheName, sourcePath, CLEAR_CACHE_AFTER*time.Hour); err == nil {
 			reader.Close()
 			(*res).Header().Set("Content-Type", "application/x-mpegURL")
-			return NewReadCloserFromBytes([]byte(servePlaylist(cacheName, quality))), true, nil
+			return NewReadCloserFromBytes([]byte(servePlaylist(cacheName, sourcePath, quality))), true, nil
 		}
 	}
 
@@ -106,7 +106,7 @@ func createPlaylist(reader io.ReadCloser, ctx *App, res *http.ResponseWriter, re
 	reader.Close()
 
 	(*res).Header().Set("Content-Type", "application/x-mpegURL")
-	return NewReadCloserFromBytes([]byte(servePlaylist(cacheName, quality))), true, nil
+	return NewReadCloserFromBytes([]byte(servePlaylist(cacheName, cachePath, quality))), true, nil
 }
 
 // defaultPresetName is the configured default, coerced to a whitelisted name.

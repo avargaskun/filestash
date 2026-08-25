@@ -15,10 +15,19 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func MasterPlaylist(cacheName string, p preset.Preset) string {
+// MasterPlaylist declares what the segments will actually contain: a
+// video-only source must not advertise AAC, or MSE waits forever for an audio
+// buffer that no segment will ever fill.
+func MasterPlaylist(cacheName string, p preset.Preset, hasAudio bool) string {
+	codecs := VIDEO_CODEC
+	bandwidth := p.Bitrate
+	if hasAudio {
+		codecs += "," + AUDIO_CODEC
+		bandwidth += AUDIO_BITRATE
+	}
 	master := "#EXTM3U\n"
 	master += "#EXT-X-VERSION:3\n"
-	master += fmt.Sprintf(`#EXT-X-STREAM-INF:BANDWIDTH=%d,CODECS="avc1.64001f,mp4a.40.2"`+"\n", p.Bitrate+AUDIO_BITRATE)
+	master += fmt.Sprintf(`#EXT-X-STREAM-INF:BANDWIDTH=%d,CODECS="%s"`+"\n", bandwidth, codecs)
 	master += fmt.Sprintf(WithBase("/hls/index.m3u8?path=%s&preset=%s\n"), cacheName, p.Name)
 	return master
 }
@@ -62,7 +71,7 @@ func playlistHandler(ctx *App, res http.ResponseWriter, req *http.Request) {
 		res.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	duration, err := probeDuration(path)
+	duration, _, err := probeMedia(path)
 	if err != nil {
 		res.WriteHeader(http.StatusInternalServerError)
 		return
