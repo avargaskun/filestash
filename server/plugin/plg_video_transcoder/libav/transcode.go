@@ -11,6 +11,8 @@ import (
 	"io"
 	"runtime/cgo"
 	"unsafe"
+
+	. "github.com/mickael-kerjean/filestash/server/common"
 )
 
 func init() {
@@ -53,6 +55,8 @@ func transcodeSegment(ctx context.Context, cachePath string, segmentNumber int, 
 
 	if ret := C.ff_transcode_segment(&req, C.uintptr_t(h)); ret < 0 && ctx.Err() == nil {
 		err = fmt.Errorf("%s", C.GoString(req.errbuf))
+	} else if ret == C.FF_SEGMENT_NO_FRAMES {
+		Log.Info("plg_video_transcoder::segment::no-frames path=%s segment=%d", cachePath, segmentNumber)
 	}
 
 	C.free(unsafe.Pointer(req.path))

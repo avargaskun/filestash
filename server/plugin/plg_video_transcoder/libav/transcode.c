@@ -39,6 +39,7 @@ typedef struct {
 	int trim;
 	int64_t last_dts;
 	int done;
+	int frames_in;
 
 	char graph_spec[256];
 } stream;
@@ -482,6 +483,12 @@ static int drain_encoder(ctx *c, stream *s) {
 }
 
 static int push_filter(ctx *c, stream *s, AVFrame *in) {
+	if (!s->src || !s->sink) {
+		return 0; // window produced no in-range frame: the graph was never built, nothing to flush
+	}
+	if (in) {
+		s->frames_in++;
+	}
 	int ret = av_buffersrc_add_frame_flags(s->src, in, AV_BUFFERSRC_FLAG_KEEP_REF);
 	if (ret < 0) {
 		return ret;
@@ -563,6 +570,7 @@ static int run(ctx *c, const FFRequest *req, char *errbuf, int errlen) {
 		s->feed_end = end_pts;
 		s->trim = 0;
 		s->done = 0;
+		s->frames_in = 0;
 		s->last_dts = INT64_MIN;
 		if (s->type == AVMEDIA_TYPE_AUDIO) {
 			int64_t margin = (int64_t)(PREROLL_SEC * tb.den / tb.num);
@@ -761,6 +769,9 @@ int ff_transcode_segment(const FFRequest *req, uintptr_t writer) {
 	}
 
 	ret = run(&c, req, errbuf, errlen);
+	if (ret == 0 && video && video->frames_in == 0) {
+		ret = FF_SEGMENT_NO_FRAMES; // no in-range video frame: whatever the muxer emitted still goes out
+	}
 	cleanup(&c);
 	return ret;
 }
