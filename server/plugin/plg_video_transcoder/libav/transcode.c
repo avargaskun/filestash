@@ -1,6 +1,7 @@
 #include "transcode.h"
 #include "_cgo_export.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -782,11 +783,103 @@ int ff_transcode_segment(const FFRequest *req, uintptr_t writer) {
 	return ret;
 }
 
-int ff_probe_media(const char *path, double *duration, int *has_audio, char *errbuf, int errlen) {
+#define F3_SCAN_BYTE_BUDGET (256LL * 1024 * 1024) // cumulative across every rung
+#define F3_SCAN_PACKET_CAP 500000
+
+// scan_content_end measures the largest presentation timestamp carried by the
+// streams the transcoder would actually encode, by walking packets from near
+// the declared end to EOF. It never decodes and never reopens the file.
+//
+// Every bound here answers a way this can go wrong on real media: a bound in
+// seconds is no bound at all when the declared duration is AV_NOPTS_VALUE or is
+// itself truncated (a still-downloading torrent), so the walk is capped in
+// bytes; a read can stop for reasons other than EOF, and clamping to a demux
+// error would truncate the playlist at the damage, so only a clean AVERROR_EOF
+// is a result; and packets arrive in decode order, so the answer is a running
+// maximum, never the last packet seen. Returns 1 and writes *out on success.
+static int scan_content_end(AVFormatContext *fmt, double duration, double *out) {
+	static const double bounds[] = {10.0, 90.0, 600.0};
+	if (!(duration > 0.0) || !isfinite(duration)) {
+		return 0;
+	}
+	const AVCodec *dec = NULL; // non-NULL decoder_ret makes this add_stream's own selection
+	int vi = av_find_best_stream(fmt, AVMEDIA_TYPE_VIDEO, -1, -1, &dec, 0);
+	dec = NULL;
+	int ai = av_find_best_stream(fmt, AVMEDIA_TYPE_AUDIO, -1, -1, &dec, 0);
+	if (vi < 0 && ai < 0) {
+		return 0;
+	}
+	AVPacket *pkt = av_packet_alloc();
+	if (!pkt) {
+		return 0;
+	}
+	int64_t budget = F3_SCAN_BYTE_BUDGET;
+	for (size_t b = 0; b < sizeof(bounds) / sizeof(bounds[0]); b++) {
+		double from = duration - bounds[b];
+		if (from < 0) {
+			from = 0;
+		}
+		if (av_seek_frame(fmt, -1, (int64_t)(from * AV_TIME_BASE), AVSEEK_FLAG_BACKWARD) < 0) {
+			break;
+		}
+		int64_t base = avio_tell(fmt->pb);
+		int64_t npkt = 0, pos = base;
+		double best = -1.0;
+		int ret;
+		while ((ret = av_read_frame(fmt, pkt)) >= 0) {
+			if (pkt->stream_index == vi || pkt->stream_index == ai) {
+				int64_t ts = pkt->pts != AV_NOPTS_VALUE ? pkt->pts : pkt->dts;
+				if (ts != AV_NOPTS_VALUE) {
+					double t = ts * av_q2d(fmt->streams[pkt->stream_index]->time_base);
+					if (t > best) {
+						best = t;
+					}
+				}
+			}
+			av_packet_unref(pkt);
+			if (++npkt > F3_SCAN_PACKET_CAP) {
+				ret = AVERROR(EIO);
+				break;
+			}
+			pos = avio_tell(fmt->pb);
+			if (base >= 0 && pos >= 0 && pos - base > budget) {
+				ret = AVERROR(EIO);
+				break;
+			}
+		}
+		if (ret == AVERROR_EOF && best >= 0) {
+			*out = best;
+			av_packet_free(&pkt);
+			return 1;
+		}
+		if (ret != AVERROR_EOF) {
+			break;
+		}
+		if (base >= 0 && pos >= 0) {
+			budget -= (pos - base);
+		}
+		if (budget <= 0 || from == 0) {
+			break;
+		}
+	}
+	av_packet_free(&pkt);
+	return 0;
+}
+
+int ff_probe_media(const char *path, double *duration, int *has_audio, double *content_end, int scan_end, uintptr_t interrupt, char *errbuf, int errlen) {
 	if (errlen > 0) {
 		errbuf[0] = '\0';
 	}
-	AVFormatContext *fmt = NULL;
+	*content_end = 0;
+	AVFormatContext *fmt = avformat_alloc_context();
+	if (!fmt) {
+		snprintf(errbuf, errlen, "alloc input context failed");
+		return AVERROR(ENOMEM);
+	}
+	if (interrupt) { // 0 means no callback: cgo.Handle(0).Value() panics
+		fmt->interrupt_callback.callback = interrupt_cb;
+		fmt->interrupt_callback.opaque = (void *)interrupt;
+	}
 	int ret = avformat_open_input(&fmt, path, NULL, NULL);
 	if (ret < 0) {
 		return fail(errbuf, errlen, ret, "open input");
@@ -799,6 +892,9 @@ int ff_probe_media(const char *path, double *duration, int *has_audio, char *err
 	}
 	*duration = (double)fmt->duration / AV_TIME_BASE;
 	*has_audio = av_find_best_stream(fmt, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0) >= 0 ? 1 : 0;
+	if (scan_end) {
+		scan_content_end(fmt, *duration, content_end);
+	}
 	avformat_close_input(&fmt);
 	return 0;
 }

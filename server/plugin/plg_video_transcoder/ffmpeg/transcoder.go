@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os/exec"
 	"strconv"
+	"strings"
 
 	. "github.com/mickael-kerjean/filestash/server/common"
 	"github.com/mickael-kerjean/filestash/server/plugin/plg_video_transcoder/preset"
@@ -148,6 +150,57 @@ func probeMedia(path string) (float64, bool, error) {
 		}
 	}
 	return d, hasAudio, nil
+}
+
+// probeContentEnd measures where the streams that get transcoded really end,
+// which the container's declared duration does not promise. It returns 0 —
+// meaning "do not clamp" — on any failure at all.
+//
+// The type selectors match what the segment encoders do: they pass a bare -i
+// with -an/-vn, so ffmpeg's own default stream selection applies, and pinning
+// this to v:0/a:0 would measure a stream the encoder never touches. Taking the
+// max across the type can only over-report, i.e. fail open.
+func probeContentEnd(ctx context.Context, path string, duration float64) float64 {
+	if !(duration > 0) || math.IsInf(duration, 0) || math.IsNaN(duration) {
+		return 0
+	}
+	for _, back := range []float64{10, 90, 600} {
+		from := duration - back
+		if from < 0 {
+			from = 0
+		}
+		best := math.Inf(-1)
+		for _, selector := range []string{"V", "a"} {
+			out, err := exec.CommandContext(ctx,
+				"ffprobe", "-v", "error",
+				"-select_streams", selector,
+				"-read_intervals", fmt.Sprintf("%f%%", from),
+				"-show_entries", "packet=pts_time",
+				"-of", "csv=p=0",
+				path,
+			).Output()
+			if err != nil {
+				return 0
+			}
+			for _, line := range strings.Split(string(out), "\n") {
+				line = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(line), ","))
+				if line == "" {
+					continue
+				}
+				// decode order: the running max, never the last line
+				if v, err := strconv.ParseFloat(line, 64); err == nil && v > best {
+					best = v
+				}
+			}
+		}
+		if !math.IsInf(best, -1) {
+			return best
+		}
+		if from == 0 {
+			break
+		}
+	}
+	return 0
 }
 
 // HasAudio reports whether the source carries an audio stream. An unprobeable

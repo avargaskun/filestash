@@ -25,7 +25,13 @@ typedef struct {
 
 int ff_transcode_segment(const FFRequest *req, uintptr_t writer);
 
-int ff_probe_media(const char *path, double *duration, int *has_audio, char *errbuf, int errlen);
+// ff_probe_media reports the container's declared duration and whether the
+// source has audio. With scan_end non-zero it also measures where the streams
+// that get transcoded really end (*content_end), which the container duration
+// does not promise; *content_end is 0 whenever that could not be established,
+// which the caller must read as "no clamp". interrupt is the same cgo-handle
+// contract FFRequest.interrupt uses; pass 0 for no callback.
+int ff_probe_media(const char *path, double *duration, int *has_audio, double *content_end, int scan_end, uintptr_t interrupt, char *errbuf, int errlen);
 
 void ff_set_log_quiet(void);
 

@@ -2,13 +2,13 @@ package ffmpeg
 
 import (
 	"fmt"
-	"math"
 	"net/http"
 	"os"
 	"strconv"
 
 	. "github.com/mickael-kerjean/filestash/server/common"
 	. "github.com/mickael-kerjean/filestash/server/middleware"
+	"github.com/mickael-kerjean/filestash/server/plugin/plg_video_transcoder/hlsmath"
 	"github.com/mickael-kerjean/filestash/server/plugin/plg_video_transcoder/mediaref"
 	"github.com/mickael-kerjean/filestash/server/plugin/plg_video_transcoder/preset"
 
@@ -87,22 +87,15 @@ func playlistVideoHandler(ctx *App, res http.ResponseWriter, req *http.Request) 
 		res.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	contentEnd := probeContentEnd(req.Context(), path, duration)
 
-	response := "#EXTM3U\n"
-	response += "#EXT-X-VERSION:3\n"
-	response += "#EXT-X-MEDIA-SEQUENCE:0\n"
-	response += "#EXT-X-ALLOW-CACHE:YES\n"
-	response += "#EXT-X-PLAYLIST-TYPE:VOD\n"
-	response += fmt.Sprintf("#EXT-X-TARGETDURATION:%d\n", HLS_VIDEO_SEGMENT_LENGTH)
-	total := int(math.Ceil(duration / float64(HLS_VIDEO_SEGMENT_LENGTH)))
-	for i := 0; i < total; i++ {
-		response += fmt.Sprintf("#EXTINF:%.4f, nodesc\n", math.Min(
-			float64(HLS_VIDEO_SEGMENT_LENGTH),
-			duration-float64(i*HLS_VIDEO_SEGMENT_LENGTH),
-		))
-		response += fmt.Sprintf(WithBase("/hls/video_%d.ts?path=%s&preset=%s\n"), i, key, quality.Name)
+	end, total := hlsmath.PlaylistShape(duration, contentEnd, HLS_VIDEO_SEGMENT_LENGTH)
+	if total < hlsmath.TotalSegments(duration, HLS_VIDEO_SEGMENT_LENGTH) {
+		Log.Info("plg_video_transcoder::playlist::clamp path=%s container=%.3f content=%.3f segments=%d", path, duration, contentEnd, total)
 	}
-	response += "#EXT-X-ENDLIST\n"
+	response := hlsmath.MediaPlaylist(end, HLS_VIDEO_SEGMENT_LENGTH, ", nodesc", func(i int) string {
+		return fmt.Sprintf(WithBase("/hls/video_%d.ts?path=%s&preset=%s"), i, key, quality.Name)
+	})
 	res.Header().Set("Content-Type", "application/x-mpegURL")
 	res.Write([]byte(response))
 }
@@ -118,22 +111,18 @@ func playlistAudioHandler(ctx *App, res http.ResponseWriter, req *http.Request) 
 		res.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	// the same max(video, audio) end as the video rendition: HLS wants the audio
+	// rendition to cover the video timeline, and an audio segment past the audio
+	// end is an empty body here, never a crash
+	contentEnd := probeContentEnd(req.Context(), path, duration)
 
-	response := "#EXTM3U\n"
-	response += "#EXT-X-VERSION:3\n"
-	response += "#EXT-X-MEDIA-SEQUENCE:0\n"
-	response += "#EXT-X-ALLOW-CACHE:YES\n"
-	response += "#EXT-X-PLAYLIST-TYPE:VOD\n"
-	response += fmt.Sprintf("#EXT-X-TARGETDURATION:%d\n", HLS_AUDIO_SEGMENT_LENGTH)
-	total := int(math.Ceil(duration / float64(HLS_AUDIO_SEGMENT_LENGTH)))
-	for i := 0; i < total; i++ {
-		response += fmt.Sprintf("#EXTINF:%.4f,\n", math.Min(
-			float64(HLS_AUDIO_SEGMENT_LENGTH),
-			duration-float64(i*HLS_AUDIO_SEGMENT_LENGTH),
-		))
-		response += fmt.Sprintf(WithBase("/hls/audio_%d.ts?path=%s\n"), i, key)
+	end, total := hlsmath.PlaylistShape(duration, contentEnd, HLS_AUDIO_SEGMENT_LENGTH)
+	if total < hlsmath.TotalSegments(duration, HLS_AUDIO_SEGMENT_LENGTH) {
+		Log.Info("plg_video_transcoder::playlist::clamp path=%s container=%.3f content=%.3f segments=%d", path, duration, contentEnd, total)
 	}
-	response += "#EXT-X-ENDLIST\n"
+	response := hlsmath.MediaPlaylist(end, HLS_AUDIO_SEGMENT_LENGTH, ",", func(i int) string {
+		return fmt.Sprintf(WithBase("/hls/audio_%d.ts?path=%s"), i, key)
+	})
 	res.Header().Set("Content-Type", "application/x-mpegURL")
 	res.Write([]byte(response))
 }
