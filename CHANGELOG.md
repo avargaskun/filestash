@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.4](https://github.com/avargaskun/filestash/compare/v1.3.3...v1.3.4) (2026-08-26)
+
+
+### Bug Fixes
+
+* clamp the HLS playlist to the media's real content end ([e0028d8](https://github.com/avargaskun/filestash/commit/e0028d86740105c5d30d003f0d1677d2801f01de))
+
 ## [1.3.3](https://github.com/avargaskun/filestash/compare/v1.3.2...v1.3.3) (2026-08-25)
 
 
