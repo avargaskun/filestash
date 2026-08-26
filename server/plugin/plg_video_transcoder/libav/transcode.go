@@ -93,11 +93,30 @@ func probeMedia(path string) (float64, bool, error) {
 
 	var duration C.double
 	var hasAudio C.int
+	var contentEnd C.double
 	var errbuf [256]C.char
-	if ret := C.ff_probe_media(cPath, &duration, &hasAudio, &errbuf[0], C.int(len(errbuf))); ret < 0 {
+	if ret := C.ff_probe_media(cPath, &duration, &hasAudio, &contentEnd, 0, 0, &errbuf[0], C.int(len(errbuf))); ret < 0 {
 		return 0, false, fmt.Errorf("%s", C.GoString(&errbuf[0]))
 	}
 	return float64(duration), hasAudio != 0, nil
+}
+
+// probePlayable is probeMedia plus the end-scan: contentEnd is where the
+// transcoded streams really stop, or 0 when that could not be established.
+func probePlayable(ctx context.Context, path string) (float64, float64, bool, error) {
+	cPath := C.CString(path)
+	defer C.free(unsafe.Pointer(cPath))
+	hctx := cgo.NewHandle(ctx)
+	defer hctx.Delete()
+
+	var duration C.double
+	var hasAudio C.int
+	var contentEnd C.double
+	var errbuf [256]C.char
+	if ret := C.ff_probe_media(cPath, &duration, &hasAudio, &contentEnd, 1, C.uintptr_t(hctx), &errbuf[0], C.int(len(errbuf))); ret < 0 {
+		return 0, 0, false, fmt.Errorf("%s", C.GoString(&errbuf[0]))
+	}
+	return float64(duration), float64(contentEnd), hasAudio != 0, nil
 }
 
 // HasAudio reports whether the source carries an audio stream. An unprobeable
